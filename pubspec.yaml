@@ -1,0 +1,19 @@
+name: bloc_notas
+description: Bloc de Notas Web App es un prototipo de bloc de notas disenado con fines de practica.
+publish_to: 'none'
+version: 0.0.1
+
+environment:
+  sdk: '>=3.1.2 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
