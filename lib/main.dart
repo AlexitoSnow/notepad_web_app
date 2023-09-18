@@ -1,12 +1,19 @@
-import 'package:bloc_notas/archivo.dart';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+/// The URI of the server
+/// Local: Uri(scheme: 'http', host: 'localhost', port: 9090);
+/// Remote: Uri(scheme: 'http', host: 'public-host');
+final requestUri = Uri(scheme: 'http', host: 'localhost', port: 9090);
 
 void main() {
   runApp(const MainApp());
 }
 
 class MainApp extends StatelessWidget {
-  final title = "Bloc de notas | Web App";
+  final title = "Snow's Notepad | Web App";
 
   const MainApp({super.key});
   @override
@@ -26,92 +33,50 @@ class Page extends StatefulWidget {
   State createState() => _Page();
 }
 
+/// The main page of the app
 class _Page extends State<Page> {
-  List<Archivo> archivos = [];
-  List<TextButton> botones = [];
+  late Future<List<String>> names;
+
   var content = "";
-  var title = "Bloc de Notas";
+  var title = "Notepad";
+
   TextEditingController _contentController = TextEditingController();
   final TextEditingController _titleController = TextEditingController();
 
-  _Page() {
-    archivos.add(Archivo("¡Bienvenido!",
-        "¡Hola! Gracias por probar mi web app.\nSaludos, Alexito Snow."));
+  @override
+  void initState() {
+    super.initState();
+    names = getTitlesRequest();
   }
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
-    botones.clear();
-    for (Archivo archivo in archivos) {
-      var text = TextButton(
-          style: TextButton.styleFrom(
-            backgroundColor: Colors.black54,
-            foregroundColor: Colors.white,
-            fixedSize: Size(width * 0.3, height * 0.05),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(0.0),
-            ),
-            textStyle: const TextStyle(
-                fontWeight: FontWeight.bold, overflow: TextOverflow.ellipsis),
-          ),
-          onPressed: () => setState(() {
-                content = archivo.contenido;
-                title = archivo.nombre;
-              }),
-          child: Text(
-            archivo.nombre,
-          ));
-      botones.add(text);
-    }
+
     _contentController = TextEditingController(text: content);
-    Archivo temporal = Archivo(title, "");
+
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
         backgroundColor: Colors.black54,
         actions: [
           IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: guardar,
-          ),
+              icon: const Icon(Icons.save),
+              onPressed: saveRequest,
+              tooltip: "Save Content"),
           IconButton(
-            icon: const Icon(Icons.delete),
-            onPressed: () => borrar(temporal),
-          ),
+              icon: const Icon(Icons.delete),
+              onPressed: deleteRequest,
+              tooltip: "Delete Current File"),
           IconButton(
               icon: const Icon(Icons.drive_file_rename_outline),
-              onPressed: () => {
-                    if (title != "Bloc de Notas")
-                      {
-                        temporal = Archivo(title, ""),
-                        showDialog(
-                            barrierColor: const Color.fromRGBO(0, 0, 0, 0.582),
-                            context: context,
-                            builder: (BuildContext context) {
-                              return AlertDialog(
-                                title: const Text("Renombrar Archivo"),
-                                content: TextField(
-                                  controller: _titleController..text = title,
-                                ),
-                                actions: [
-                                  TextButton(
-                                      onPressed: () {
-                                        if (_titleController.text.toString() !=
-                                            "Bloc de Notas") {
-                                          renombrar(temporal);
-                                          guardar();
-                                          Navigator.of(context).pop();
-                                        }
-                                      },
-                                      child: const Text("Renombrar"))
-                                ],
-                              );
-                            })
-                      }
-                  }),
-          IconButton(onPressed: crear, icon: const Icon(Icons.add))
+              onPressed: saveButton,
+              tooltip: "Rename Current File"),
+          IconButton(
+              onPressed: createRequest,
+              icon: const Icon(Icons.add),
+              tooltip: "Create New Empty File")
         ],
       ),
       body: Center(
@@ -121,8 +86,43 @@ class _Page extends State<Page> {
               width: width * 0.3,
               height: height,
               color: Colors.black54,
-              child: Column(
-                children: botones,
+              child: FutureBuilder<List<String>>(
+                future: names,
+                builder: (BuildContext context,
+                    AsyncSnapshot<List<String>> snapshot) {
+                  if (snapshot.hasData) {
+                    return Column(
+                        children: snapshot.data!.map((name) {
+                      return TextButton(
+                          style: TextButton.styleFrom(
+                            backgroundColor: Colors.black54,
+                            foregroundColor: Colors.white,
+                            fixedSize: Size(width * 0.3, height * 0.05),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(0.0),
+                            ),
+                            textStyle: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                          onPressed: () => setState(() {
+                                getContentRequest(name);
+                                title = name;
+                              }),
+                          child: Text(name));
+                    }).toList());
+                  } else if (snapshot.hasError) {
+                    return const Column(
+                        children: [Text('Error while loading files!')]);
+                  } else {
+                    return const Row(
+                      children: [
+                        Icon(Icons.change_circle_sharp),
+                        Text("Loading...")
+                      ],
+                    );
+                  }
+                },
               ),
             ),
             Container(
@@ -148,61 +148,126 @@ class _Page extends State<Page> {
     );
   }
 
-  void guardar() {
-    if (title != "Bloc de Notas") {
-      content = _contentController.text;
-      var temporal = Archivo(title, "");
-      setState(() {
-        archivos[archivos.indexOf(temporal)].contenido = content;
-      });
+  /// Show a dialog to rename the current file
+  void saveButton() {
+    if (title != "Notepad") {
+      showDialog(
+          barrierColor: const Color.fromRGBO(0, 0, 0, 0.582),
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text("Rename File"),
+              content: TextField(
+                controller: _titleController..text = title,
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () {
+                      var newT = _titleController.text;
+                      if (newT != "Notepad") {
+                        renameRequest(title, newT);
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    child: const Text("Rename"))
+              ],
+            );
+          });
     }
   }
 
-  void renombrar(Archivo temporal) {
+  /// Get the content of a file from the server
+  void getContentRequest(String title) async {
+    var getContentUri = requestUri.replace(path: 'file/$title');
+    final response = await http.get(getContentUri);
+    content = response.body;
     setState(() {
-      archivos[archivos.indexOf(temporal)].nombre =
-          _titleController.text.toString();
-      title = _titleController.text.toString();
+      _contentController.text = content;
     });
   }
 
-  void borrar(Archivo temporal) {
-    if (title != "Bloc de Notas") {
-      temporal = Archivo(title, "");
+  /// Get the list of files on the server
+  Future<List<String>> getTitlesRequest() async {
+    var getTitlesUri = requestUri.replace(path: 'files/titles');
+    final response = await http.get(getTitlesUri);
+    return List<String>.from(jsonDecode(utf8.decode(response.bodyBytes)));
+  }
+
+  /// Save the content of the file on the server
+  void saveRequest() async {
+    if (title != "Notepad") {
+      var updateContentUri = requestUri.replace(path: 'file/$title');
+      content = _contentController.text;
+      final response = await http.put(updateContentUri, body: content);
+      print("Saved Status: ${response.statusCode}\nBody: ${response.body}");
+    }
+  }
+
+  /// Rename a file on the server
+  /// and update the file list
+  void renameRequest(String oldTitle, String newTitle) async {
+    saveRequest();
+    var renameTitleUri =
+        requestUri.replace(path: 'file/rename/$oldTitle/$newTitle');
+    final response = await http.put(renameTitleUri);
+    print('Rename Response:\n${response.body}');
+    if (response.body == "true") {
       setState(() {
-        archivos.removeAt(archivos.indexOf(temporal));
-        content = "";
-        title = "Bloc de Notas";
+        title = newTitle;
+        names = getTitlesRequest();
       });
     }
   }
 
-  void crear() {
-    guardar();
+  /// Delete a file from the server
+  /// and update the file list
+  void deleteRequest() async {
+    if (title != "Notepad") {
+      var deleteFileUri = requestUri.replace(path: 'file/$title');
+      final response = await http.delete(deleteFileUri);
+      print('Delete Response:\n${response.body}');
+      setState(() {
+        names = getTitlesRequest();
+        content = "";
+        title = "Notepad";
+      });
+    }
+  }
+
+  /// Create a new file on the server
+  /// and update the file list
+  void createRequest() async {
+    saveRequest();
+    int nFiles = (await names).length + 1;
+    // ignore: use_build_context_synchronously
     showDialog(
         barrierColor: const Color.fromRGBO(0, 0, 0, 0.582),
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
-            title: const Text("Crear Archivo"),
+            title: const Text("Create Empty File"),
             content: TextField(
-              controller: _titleController
-                ..text = "Archivo ${archivos.length + 1}",
+              controller: _titleController..text = "File $nFiles",
             ),
             actions: [
               TextButton(
-                  onPressed: () {
-                    if (_titleController.text.toString() != "Bloc de Notas") {
+                  onPressed: () async {
+                    var newFile = _titleController.text;
+                    if (newFile != "Notepad") {
+                      var createFileUri =
+                          requestUri.replace(path: 'file/$newFile');
+                      final response = await http.post(createFileUri);
+                      print('Create Response:\n${response.body}');
                       setState(() {
-                        archivos
-                            .add(Archivo(_titleController.text.toString(), ""));
+                        names = getTitlesRequest();
                       });
-                      title = _titleController.text.toString();
+                      title = newFile;
                       content = "";
+                      // ignore: use_build_context_synchronously
                       Navigator.of(context).pop();
                     }
                   },
-                  child: const Text("Agregar"))
+                  child: const Text("Add"))
             ],
           );
         });

@@ -1,7 +1,7 @@
-name: bloc_notas
-description: Bloc de Notas Web App es un prototipo de bloc de notas disenado con fines de practica.
+name: notepad_web_app
+description: Notepad Web App is a prototype notepad designed for practice purposes.
 publish_to: 'none'
-version: 0.0.1
+version: 0.1.0
 
 environment:
   sdk: '>=3.1.2 <4.0.0'
@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  http: ^1.1.0
 
 dev_dependencies:
   flutter_test:
